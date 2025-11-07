@@ -1,146 +1,138 @@
 ﻿const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { validationResult } = require('express-validator');
-
-// Import models
 const Teacher = require('../models/TeacherSide/Teacher');
 const Student = require('../models/Student');
 const Admin = require('../models/Admin');
 
-/**
- * Login handler
- * Authenticates user and returns JWT token
- */
 exports.login = async (req, res) => {
     try {
-        console.log('\n=== Login Request ===');
-        console.log('Body:', { email: req.body.email, role: req.body.role, hasPassword: !!req.body.password });
-
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: 'Validation error',
-                errors: errors.array()
-            });
-        }
-
+        console.log('\n=== LOGIN REQUEST ===');
         const { email, password, role } = req.body;
-
-        // Validate required fields
+        
         if (!email || !password || !role) {
+            console.log('Missing required fields');
             return res.status(400).json({
                 success: false,
                 message: 'Email, password, and role are required'
             });
         }
 
-        // Determine which model to use based on role
+        const normalizedEmail = email.toLowerCase().trim();
+        const normalizedRole = role.toLowerCase();
+
+        const validRoles = ['teacher', 'student', 'admin'];
+        if (!validRoles.includes(normalizedRole)) {
+            console.log('Invalid role:', normalizedRole);
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid role. Valid roles: teacher, student, admin'
+            });
+        }
+
         let UserModel;
-        switch (role.toLowerCase()) {
-            case 'teacher':
-                UserModel = Teacher;
-                break;
-            case 'student':
-                UserModel = Student;
-                break;
-            case 'admin':
-                UserModel = Admin;
-                break;
-            default:
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid role specified. Valid roles: teacher, student, admin'
-                });
+        switch (normalizedRole) {
+            case 'teacher': UserModel = Teacher; break;
+            case 'student': UserModel = Student; break;
+            case 'admin': UserModel = Admin; break;
         }
 
-        // Find user by email (case-insensitive)
-        const user = await UserModel.findOne({ email: email.toLowerCase() });
+        console.log(`Searching for ${normalizedRole}: ${normalizedEmail}`);
+        const user = await UserModel.findOne({ email: normalizedEmail });
+        
         if (!user) {
+            console.log(`No ${normalizedRole} found`);
             return res.status(401).json({
                 success: false,
                 message: 'Invalid email or password'
             });
         }
 
-        // Verify password
+        console.log(`Found user: ${user.name}`);
         const isMatch = await bcrypt.compare(password, user.password);
+        
         if (!isMatch) {
+            console.log('Password mismatch');
             return res.status(401).json({
                 success: false,
                 message: 'Invalid email or password'
             });
         }
 
-        // Generate JWT token
+        console.log('Password verified');
         const token = jwt.sign(
-            { id: user._id, role: role.toLowerCase() },
+            { id: user._id.toString(), role: normalizedRole },
             process.env.JWT_SECRET || 'your-secret-key',
             { expiresIn: '24h' }
         );
 
-        console.log(' Login successful for:', user.email);
-
-        res.json({
+        console.log('LOGIN SUCCESSFUL');
+        return res.status(200).json({
             success: true,
             message: 'Login successful',
             token,
             user: {
-                id: user._id,
+                id: user._id.toString(),
                 name: user.name,
                 email: user.email,
-                role: role.toLowerCase()
+                role: normalizedRole
             }
         });
 
     } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({
+        console.error('Login error:', error.message);
+        return res.status(500).json({
             success: false,
-            message: 'An error occurred during login'
+            message: 'An error occurred during login',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 };
 
-/**
- * Register handler
- * Creates new user account based on role
- */
 exports.register = async (req, res) => {
     try {
-        console.log('\n=== Registration Request ===');
-
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: 'Validation error',
-                errors: errors.array()
-            });
-        }
-
+        console.log('\n=== REGISTRATION REQUEST ===');
+        
         const { name, email, password, role, subject, classes, phone, class: studentClass, section, admissionNumber, parentName, parentPhone } = req.body;
 
-        // Validate required fields
         if (!name || !email || !password || !role) {
+            console.log('Missing required fields');
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields'
+                message: 'Missing required fields: name, email, password, role'
             });
         }
 
-        // Validate role
-        const validRoles = ['teacher', 'student', 'admin'];
+        const normalizedEmail = email.toLowerCase().trim();
         const normalizedRole = role.toLowerCase();
-        if (!validRoles.includes(normalizedRole)) {
+        const normalizedName = name.trim();
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(normalizedEmail)) {
+            console.log('Invalid email format');
             return res.status(400).json({
                 success: false,
-                message: 'Invalid role specified'
+                message: 'Invalid email format'
             });
         }
 
-        // Check if user already exists
-        const normalizedEmail = email.toLowerCase();
+        if (password.length < 6) {
+            console.log('Password too short');
+            return res.status(400).json({
+                success: false,
+                message: 'Password must be at least 6 characters long'
+            });
+        }
+
+        const validRoles = ['teacher', 'student', 'admin'];
+        if (!validRoles.includes(normalizedRole)) {
+            console.log('Invalid role');
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid role. Valid roles: teacher, student, admin'
+            });
+        }
+
+        console.log('Checking if email exists...');
         const [existingTeacher, existingStudent, existingAdmin] = await Promise.all([
             Teacher.findOne({ email: normalizedEmail }),
             Student.findOne({ email: normalizedEmail }),
@@ -148,40 +140,42 @@ exports.register = async (req, res) => {
         ]);
 
         if (existingTeacher || existingStudent || existingAdmin) {
+            console.log('Email already registered');
             return res.status(409).json({
                 success: false,
                 message: 'Email already registered'
             });
         }
 
-        // Hash password
+        console.log('Hashing password...');
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
         let user;
 
-        // Create user based on role
         switch (normalizedRole) {
             case 'teacher':
                 user = await Teacher.create({
-                    name,
+                    name: normalizedName,
                     email: normalizedEmail,
                     password: hashedPassword,
                     subject: subject || 'General',
                     classes: classes || ['All'],
                     phone: phone || ''
                 });
+                console.log('Teacher created:', user._id);
                 break;
 
             case 'student':
                 if (!studentClass || !section || !admissionNumber) {
+                    console.log('Missing student fields');
                     return res.status(400).json({
                         success: false,
                         message: 'Student registration requires: class, section, admissionNumber'
                     });
                 }
                 user = await Student.create({
-                    name,
+                    name: normalizedName,
                     email: normalizedEmail,
                     password: hashedPassword,
                     class: studentClass,
@@ -190,32 +184,37 @@ exports.register = async (req, res) => {
                     parentName: parentName || '',
                     parentPhone: parentPhone || ''
                 });
+                console.log('Student created:', user._id);
                 break;
 
             case 'admin':
                 user = await Admin.create({
-                    name,
+                    name: normalizedName,
                     email: normalizedEmail,
                     password: hashedPassword
                 });
+                console.log('Admin created:', user._id);
                 break;
         }
 
-        // Generate JWT token
+        if (!user) {
+            throw new Error('Failed to create user');
+        }
+
+        console.log('User saved to database');
         const token = jwt.sign(
-            { id: user._id, role: normalizedRole },
+            { id: user._id.toString(), role: normalizedRole },
             process.env.JWT_SECRET || 'your-secret-key',
             { expiresIn: '24h' }
         );
 
-        console.log(' Registration successful for:', user.email);
-
-        res.status(201).json({
+        console.log('REGISTRATION SUCCESSFUL');
+        return res.status(201).json({
             success: true,
             message: 'Registration successful',
             token,
             user: {
-                id: user._id,
+                id: user._id.toString(),
                 name: user.name,
                 email: user.email,
                 role: normalizedRole
@@ -223,44 +222,39 @@ exports.register = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Registration error:', error);
+        console.error('Registration error:', error.message);
         
         let statusCode = 500;
         let message = 'An error occurred during registration';
 
-        if (error.name === 'ValidationError') {
-            statusCode = 400;
-            message = 'Validation failed';
-        } else if (error.code === 11000) {
+        if (error.code === 11000) {
             statusCode = 409;
             message = 'Email already exists';
+        } else if (error.name === 'ValidationError') {
+            statusCode = 400;
+            message = 'Validation error: ' + Object.values(error.errors).map(e => e.message).join(', ');
+        } else if (error.name === 'CastError') {
+            statusCode = 400;
+            message = 'Invalid data format';
         }
 
-        res.status(statusCode).json({
+        return res.status(statusCode).json({
             success: false,
-            message: message
+            message: message,
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 };
 
-/**
- * Get current authenticated user
- */
 exports.getCurrentUser = async (req, res) => {
     try {
         const { id, role } = req.user;
 
         let UserModel;
         switch (role.toLowerCase()) {
-            case 'teacher':
-                UserModel = Teacher;
-                break;
-            case 'student':
-                UserModel = Student;
-                break;
-            case 'admin':
-                UserModel = Admin;
-                break;
+            case 'teacher': UserModel = Teacher; break;
+            case 'student': UserModel = Student; break;
+            case 'admin': UserModel = Admin; break;
             default:
                 return res.status(400).json({
                     success: false,
@@ -276,32 +270,30 @@ exports.getCurrentUser = async (req, res) => {
             });
         }
 
-        res.json({
+        return res.json({
             success: true,
             user: {
-                id: user._id,
+                id: user._id.toString(),
                 name: user.name,
                 email: user.email,
                 role: role
             }
         });
     } catch (error) {
-        console.error('Get current user error:', error);
-        res.status(500).json({
+        console.error('Get user error:', error.message);
+        return res.status(500).json({
             success: false,
-            message: 'Error fetching user data'
+            message: 'Error fetching user data',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 };
 
-/**
- * Create demo accounts for testing
- */
 exports.createDemoTeacher = async () => {
     try {
-        // Check if demo teacher already exists
-        const existingTeacher = await Teacher.findOne({ email: 'teacher@demo.com' });
+        console.log('Creating demo accounts...');
         
+        const existingTeacher = await Teacher.findOne({ email: 'teacher@demo.com' });
         if (!existingTeacher) {
             const hashedPassword = await bcrypt.hash('teacher123', 10);
             await Teacher.create({
@@ -312,27 +304,20 @@ exports.createDemoTeacher = async () => {
                 classes: ['Class A', 'Class B'],
                 phone: '9876543210'
             });
-            console.log('✅ Created demo teacher account: teacher@demo.com');
-        } else {
-            console.log('ℹ️ Demo teacher account already exists');
+            console.log('Created demo teacher: teacher@demo.com');
         }
 
-        // Check if demo admin already exists
         const existingAdmin = await Admin.findOne({ email: 'admin@demo.com' });
-        
         if (!existingAdmin) {
             const hashedPassword = await bcrypt.hash('admin123', 10);
             await Admin.create({
                 name: 'Admin User',
                 email: 'admin@demo.com',
-                password: hashedPassword,
-                permissions: ['manage_students', 'manage_teachers', 'manage_reports']
+                password: hashedPassword
             });
-            console.log('✅ Created demo admin account: admin@demo.com');
-        } else {
-            console.log('ℹ️ Demo admin account already exists');
+            console.log('Created demo admin: admin@demo.com');
         }
     } catch (error) {
-        console.error('❌ Error creating demo accounts:', error.message);
+        console.error('Error creating demo accounts:', error.message);
     }
 };
