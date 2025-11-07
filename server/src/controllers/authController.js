@@ -293,3 +293,46 @@ exports.getCurrentUser = async (req, res) => {
         });
     }
 };
+
+/**
+ * Create demo accounts for testing
+ */
+exports.createDemoTeacher = async () => {
+    try {
+        // Check if demo teacher already exists
+        const existingTeacher = await Teacher.findOne({ email: 'teacher@demo.com' });
+        
+        if (!existingTeacher) {
+            const hashedPassword = await bcrypt.hash('teacher123', 10);
+            await Teacher.create({
+                name: 'Demo Teacher',
+                email: 'teacher@demo.com',
+                password: hashedPassword,
+                subject: 'Computer Science',
+                classes: ['Class A', 'Class B'],
+                phone: '9876543210'
+            });
+            console.log('✅ Created demo teacher account: teacher@demo.com');
+        } else {
+            console.log('ℹ️ Demo teacher account already exists');
+        }
+
+        // Check if demo admin already exists
+        const existingAdmin = await Admin.findOne({ email: 'admin@demo.com' });
+        
+        if (!existingAdmin) {
+            const hashedPassword = await bcrypt.hash('admin123', 10);
+            await Admin.create({
+                name: 'Admin User',
+                email: 'admin@demo.com',
+                password: hashedPassword,
+                permissions: ['manage_students', 'manage_teachers', 'manage_reports']
+            });
+            console.log('✅ Created demo admin account: admin@demo.com');
+        } else {
+            console.log('ℹ️ Demo admin account already exists');
+        }
+    } catch (error) {
+        console.error('❌ Error creating demo accounts:', error.message);
+    }
+};

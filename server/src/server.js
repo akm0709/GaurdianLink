@@ -138,9 +138,6 @@ const initializeServer = async () => {
 
         // Connect to database first
         console.log('📡 Initializing server...');
-        
-        // Status is handled by /api/health endpoint
-
         await connectDB();
         console.log('✅ Database connected successfully');
         
@@ -151,7 +148,7 @@ const initializeServer = async () => {
             await new Promise((resolve, reject) => {
                 testServer.once('error', (err) => {
                     if (err.code === 'EADDRINUSE') {
-                        console.error(`Port ${PORT} is already in use. Please choose a different port.`);
+                        console.error(`❌ Port ${PORT} is already in use. Please choose a different port.`);
                         process.exit(1);
                     }
                     reject(err);
@@ -165,20 +162,29 @@ const initializeServer = async () => {
                 testServer.listen(PORT);
             });
         } catch (error) {
-            console.error('Error checking port availability:', error);
+            console.error('❌ Error checking port availability:', error);
             throw error;
         }
 
         // Start the actual server
         const server = app.listen(PORT, () => {
-            console.log(`✅ Server running on port ${PORT}`);
-            console.log(`🌐 Server URL: http://localhost:${PORT}`);
-            console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+            console.log(`\n✅ SERVER SUCCESSFULLY STARTED!`);
+            console.log(`   Port: ${PORT}`);
+            console.log(`   URL: http://localhost:${PORT}`);
+            console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
+            console.log(`   Database: ${mongoose.connection.name || 'connected'}`);
+            console.log(`\n📍 API Endpoints:`);
+            console.log(`   - http://localhost:${PORT}/api/auth/login`);
+            console.log(`   - http://localhost:${PORT}/api/auth/register`);
+            console.log(`   - http://localhost:${PORT}/api/health`);
+            console.log(`\n🧪 Demo Credentials:`);
+            console.log(`   - Email: teacher@demo.com`);
+            console.log(`   - Password: teacher123\n`);
         });
 
         // Handle server shutdown
         const gracefulShutdown = async () => {
-            console.log('🔄 Shutting down server gracefully...');
+            console.log('\n🔄 Shutting down server gracefully...');
             await mongoose.connection.close();
             server.close(() => {
                 console.log('👋 Server shut down successfully');
@@ -192,16 +198,18 @@ const initializeServer = async () => {
             process.on('SIGINT', gracefulShutdown);
         }
 
-        // Create demo teacher account after server is up
+        // Create demo accounts after server is up
         try {
             const { createDemoTeacher } = require('./controllers/authController');
-            await createDemoTeacher();
+            if (createDemoTeacher) {
+                await createDemoTeacher();
+            }
         } catch (error) {
-            console.warn('⚠️ Could not create demo teacher:', error.message);
+            console.warn('⚠️ Could not create demo accounts:', error.message);
         }
 
     } catch (err) {
-        console.error('❌ Failed to initialize server:', err);
+        console.error('❌ Failed to initialize server:', err.message);
         process.exit(1);
     }
 };

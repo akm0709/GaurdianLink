@@ -8,82 +8,80 @@ const mongoose = require('mongoose');
  */
 const connectDB = async (opts = {}) => {
     try {
-        // Clear any existing connections first
-        await mongoose.disconnect();
+        // Don't disconnect if not connected
+        if (mongoose.connection.readyState !== 0) {
+            console.log('ℹ️ Closing existing MongoDB connection...');
+            await mongoose.disconnect();
+        }
     } catch (err) {
-        console.warn('No existing connection to clear');
+        console.warn('⚠️ No existing connection to close');
     }
 
     const uri = process.env.MONGODB_URI || 'mongodb+srv://student_management_system:123sp95@mernproject.2jdp5hj.mongodb.net/guardianlink?retryWrites=true&w=majority';
     const maxRetries = opts.maxRetries || 5;
-    const retryDelay = opts.retryDelay || 5000;
+    const retryDelay = opts.retryDelay || 3000;
     let retries = 0;
 
     const attempt = async () => {
         try {
-            console.log('🔗 Attempting to connect to MongoDB...');
-            console.log('📁 Using DB URL:', process.env.MONGODB_URI ? '<MONGODB_URI loaded>' : uri);
-            console.log('🔍 Testing MongoDB connection...');
-
+            console.log(`\n🔗 Attempting MongoDB connection... (Attempt ${retries + 1}/${maxRetries})`);
+            
             // Configure Mongoose
-            mongoose.set('strictQuery', true);
+            mongoose.set('strictQuery', false);
             
             const conn = await mongoose.connect(uri, {
                 useNewUrlParser: true,
                 useUnifiedTopology: true,
                 serverSelectionTimeoutMS: 5000,
                 connectTimeoutMS: 10000,
-                socketTimeoutMS: 45000
+                socketTimeoutMS: 45000,
+                retryWrites: true,
+                w: 'majority'
             });
 
             console.log('✅ MongoDB Connected Successfully!');
-            console.log(`🏠 Host: ${conn.connection.host}`);
-            console.log(`📊 Database: ${conn.connection.name}`);
+            console.log(`   📁 Database: ${conn.connection.name}`);
+            console.log(`   🏠 Host: ${conn.connection.host}`);
+            console.log(`   � Port: ${conn.connection.port}`);
 
-            // Handle connection errors after initial connection
+            // Handle connection events
             mongoose.connection.on('error', (err) => {
-                console.error('MongoDB connection error:', err);
+                console.error('❌ MongoDB connection error:', err.message);
             });
 
             mongoose.connection.on('disconnected', () => {
-                console.log('MongoDB disconnected');
+                console.warn('⚠️ MongoDB disconnected');
+            });
+
+            mongoose.connection.on('reconnected', () => {
+                console.log('🔄 MongoDB reconnected');
             });
 
             return conn;
         } catch (error) {
             console.error('❌ MongoDB Connection Failed:', error.message);
             
-            if (retries < maxRetries) {
-                retries++;
-                console.log(`Retrying connection in ${retryDelay}ms... (Attempt ${retries}/${maxRetries})`);
-                await new Promise(resolve => setTimeout(resolve, retryDelay));
-                return attempt();
+            if (error.name === 'MongoNetworkError') {
+                console.error('   🌐 Network Error: Check internet and MongoDB accessibility');
+            } else if (error.name === 'MongoServerError') {
+                console.error('   🔐 Auth Error: Check database credentials');
+            } else if (error.name === 'MongooseServerSelectionError') {
+                console.error('   🔍 Server Error: Check connection string and DNS');
             }
             
-            throw new Error(`Failed to connect to MongoDB after ${maxRetries} attempts`);
-
-            if (error && error.name === 'MongoNetworkError') {
-                console.error('🌐 Network Error: Check internet and MongoDB accessibility');
-            } else if (error && error.name === 'MongoServerError') {
-                console.error('🔐 Auth Error: Check DB credentials');
-            } else if (error && error.name === 'MongooseServerSelectionError') {
-                console.error('🔍 Server Selection Error: Check connection string / DNS');
+            if (retries < maxRetries - 1) {
+                retries++;
+                console.log(`   ⏳ Retrying in ${retryDelay / 1000}s... (${retries}/${maxRetries})`);
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                return attempt();
+            } else {
+                throw new Error(`Failed to connect to MongoDB after ${maxRetries} attempts: ${error.message}`);
             }
-
-            console.warn(`Retrying MongoDB connection in ${retryDelay / 1000}s...`);
-            setTimeout(() => attempt(), retryDelay);
-            return null;
         }
     };
 
-    // Attach connection event listeners
-    mongoose.connection.on('connected', () => console.log('🟢 Mongoose event: connected'));
-    mongoose.connection.on('reconnected', () => console.log('🔁 Mongoose event: reconnected'));
-    mongoose.connection.on('disconnected', () => console.warn('🟡 Mongoose event: disconnected'));
-    mongoose.connection.on('error', (err) => console.error('🔴 Mongoose event: error', err && err.message ? err.message : err));
-
-    // Start first attempt (don't await here; caller may or may not await)
-    return attempt();
+    // Start connection attempt
+    return await attempt();
 };
 
 module.exports = connectDB;
