@@ -1,25 +1,34 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
 const teacherSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: true,
+    required: [true, 'Name is required'],
     trim: true
   },
   email: {
     type: String,
-    required: true,
+    required: [true, 'Email is required'],
     unique: true,
     trim: true,
-    lowercase: true
+    lowercase: true,
+    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
   },
   password: {
     type: String,
-    required: true
+    required: [true, 'Password is required'],
+    minlength: [6, 'Password must be at least 6 characters long']
+  },
+  role: {
+    type: String,
+    default: 'teacher',
+    enum: ['teacher']
   },
   subject: {
     type: String,
-    required: true
+    required: [true, 'Subject is required'],
+    trim: true
   },
   classes: [{
     type: String,
@@ -27,16 +36,33 @@ const teacherSchema = new mongoose.Schema({
   }],
   phone: {
     type: String,
-    required: false
+    required: false,
+    trim: true
   },
   isActive: {
     type: Boolean,
     default: true
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
   }
+}, {
+  timestamps: true
 });
+
+// Hash password before saving
+teacherSchema.pre('save', async function(next) {
+    if (!this.isModified('password')) return next();
+    
+    try {
+        const salt = await bcrypt.genSalt(10);
+        this.password = await bcrypt.hash(this.password, salt);
+        next();
+    } catch (error) {
+        next(error);
+    }
+});
+
+// Method to check password
+teacherSchema.methods.matchPassword = async function(enteredPassword) {
+    return await bcrypt.compare(enteredPassword, this.password);
+};
 
 module.exports = mongoose.model('Teacher', teacherSchema);

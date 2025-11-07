@@ -55,7 +55,7 @@ const studentSchema = new mongoose.Schema({
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Teacher',
-        required: true
+        default: null
     }
 }, {
     timestamps: true
